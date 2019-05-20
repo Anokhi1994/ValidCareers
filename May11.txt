@@ -1,0 +1,347 @@
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.Hashtable;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.logging.Logger;
+
+import org.apache.poi.hssf.usermodel.HSSFRow;
+import org.apache.poi.hssf.usermodel.HSSFSheet;
+import org.apache.poi.hssf.usermodel.HSSFWorkbook;
+import org.apache.poi.ss.usermodel.Workbook;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+
+import entities.Dienstgrad;
+import entities.Laufbahn;
+import entities.LaufbahngruppeOhneSchueler;
+import group.Gruppe;
+import group.Regenerationsgruppe;
+import input.Befoerderungsvoraussetzungen;
+import input.Inputdaten;
+import input.Uebergaenge;
+import input.keys.Key2Dienstgrad;
+import util.Konfiguration;
+import util.Tests;
+import util.Util;
+import util.WerkzeugeZeit;
+import org.apache.poi.hssf.usermodel.HSSFWorkbook; 
+import org.apache.poi.ss.usermodel.Sheet; 
+import org.apache.poi.ss.usermodel.Workbook;
+
+public class ValidCareers
+
+{
+	private static ValidCareers validCareer;
+	private static final Logger LOG = Logger.getLogger(Logger.GLOBAL_LOGGER_NAME);
+
+	private static final File Path_Inputdaten_Test = new File("Inputdaten_Test");
+	private static final File Path_Inputdaten_mini = new File(Path_Inputdaten_Test, "Inputdaten_mini");
+	private static final File Path_Testszenario = new File(Path_Inputdaten_mini, "Testszenario");
+	private static final File Path_TestszenarioXLfile = new File(Path_Inputdaten_mini, "Testszenario.xlsx");
+	private static final File Path_Befoerderungsvoraussetzungen = new File(Path_Inputdaten_mini,
+			"Befoerderungsvoraussetzungen");
+	private static final File Path_BefoerderungsvoraussetzungenXLfile = new File(Path_Inputdaten_mini,
+			"Befoerderungsvoraussetzungen.xlsx");
+	private static final File File_RequiredList = new File(Path_Inputdaten_mini, "File_RequiredList.xlsx");
+	private static final File Output_ValidCareers = new File("Output");
+
+	private static final File ValidCareers_Solution = new File(Output_ValidCareers, "Solution");
+	
+	
+	public static void GettingTimeRequirement() {
+
+		LaufbahngruppeOhneSchueler CareerGroup;
+		Laufbahn Career;
+		Dienstgrad FirstRank;
+		Dienstgrad HiringRank;
+		Dienstgrad TestRank = null;
+		Set<Dienstgrad> NextRankSet = null;
+		List<Double> listOfTimeSlices = new ArrayList<Double>();	
+		double timeRequirement = 0.0; //
+		boolean bool = true;
+		double timeSlice1 = 0.0;
+		 String filename = "D:/OneDrive/Work/Department of Maths/Java/Inputdaten_Test/Inputdaten_mini/NewExcelFile.xls" ;
+		HSSFWorkbook workbook = new HSSFWorkbook();
+		
+		for (Gruppe group : Inputdaten.getGruppen().values()) { 
+			System.out.println(group);
+			if (group instanceof Regenerationsgruppe) {
+				String groupNumber = Integer.toString(group.getIndex());
+				HiringRank = group.getEinstiegsdienstgrad();
+				if (HiringRank == Dienstgrad.SCHUETZE) {
+					FirstRank = group.getEinstiegsdienstgrad();
+					Career = group.getLaufbahn();
+					CareerGroup = group.getLaufbahngruppe().toOhneSchueler();
+					Set<Dienstgrad> SetOfPreviousRanks = new LinkedHashSet<>();
+					Set<Dienstgrad> ListOfRanks = new LinkedHashSet<>();
+					SetOfPreviousRanks.add(HiringRank);
+					while(bool){
+					NextRankSet = Uebergaenge.getDienstgrade(CareerGroup, Career, FirstRank);
+					ListOfRanks.add(FirstRank);
+					if (NextRankSet.isEmpty()) {
+						bool = false;
+						}
+					for (Dienstgrad nextRank : NextRankSet) {
+						ListOfRanks.add(nextRank);	
+						FirstRank = nextRank;
+						}
+					}												
+						for (Dienstgrad NextRank : ListOfRanks) {							
+							for (Dienstgrad CurrentRank : ListOfRanks) {
+								boolean IfTimeSliceExists = Befoerderungsvoraussetzungen
+										.isZeitlicheVoraussetzungVorhanden(CareerGroup, Career, HiringRank,
+												CurrentRank, NextRank);								
+								if (IfTimeSliceExists) {
+									double timeSlice = TimeSlice(IfTimeSliceExists, CareerGroup, Career,
+											HiringRank, CurrentRank, NextRank, ListOfRanks);									
+									timeSlice1 = GettingMaximumTimeSlice(CareerGroup, Career, timeSlice, 
+											timeSlice1, TestRank, NextRank);	
+									
+									
+									bool = true;									
+								}								
+								TestRank = NextRank;
+							}	
+							
+						}
+						HSSFSheet sheet = workbook.createSheet(groupNumber);  
+
+						excel( filename, workbook, sheet,groupNumber, 
+								  CareerGroup, timeSlice1 );
+					}
+				
+				}
+			
+				bool = true;
+				}
+		
+			}
+
+
+	
+    public static void excel( String filename, HSSFWorkbook workbook, HSSFSheet sheet,String groupNumber, LaufbahngruppeOhneSchueler
+			  CareerGroup, double timeSlice1) {
+        try {
+        
+        	
+           // String filename = "D:/OneDrive/Work/Department of Maths/Java/Inputdaten_Test/Inputdaten_mini/NewExcelFile.xls" ;
+           // HSSFWorkbook workbook = new HSSFWorkbook();
+            
+            if(!(timeSlice1 == 0.0))
+            {
+          //  HSSFSheet sheet = workbook.createSheet("index");  
+
+            
+            HSSFRow rowhead = sheet.createRow(0);
+            for(int i=0; i<12; i++)
+            {
+            List<String> listOfHeadings = new ArrayList<String>();
+            List<String> list = Arrays.asList("LaufbahngruppeVon", "LaufbahnVon", "DienstgradVon", "ZeitscheibeVon",
+            		"StatusVon", "LaufbahngruppeZu", "LaufbahnZu", "DienstgradZu", "ZeitscheibeZu", "StatusZu", 
+            		"Gruppe", "Wert");
+            rowhead.createCell(i).setCellValue(list.get(i));	
+            }
+            
+            for(int i=0; i<timeSlice1; i++)
+            {
+            HSSFRow TimeSliceEnd = sheet.createRow(i+1);
+            TimeSliceEnd.createCell(8).setCellValue(i+1);	
+            TimeSliceEnd.createCell(3).setCellValue(i);	
+          //  TimeSliceEnd.createCell(0).setCellValue(C);	
+            }
+            
+
+            
+            
+            
+            
+            
+
+            FileOutputStream fileOut = new FileOutputStream(filename);
+            workbook.write(fileOut);
+            fileOut.close();
+            workbook.close();
+            System.out.println("Your excel file has been generated!");
+
+        }} 
+        catch ( Exception ex ) {
+            System.out.println(ex);
+        }
+    }
+
+	  
+	
+	
+	
+	
+
+	public static double GettingMaximumTimeSlice(LaufbahngruppeOhneSchueler
+			  CareerGroup, Laufbahn Career, 
+			double timeSlice, double timeSlice1,
+			Dienstgrad TestRank, Dienstgrad NextRank )
+	{ 
+		double timeSlice2 = 0.0;
+		if(TestRank == NextRank)
+		{
+			timeSlice2 = timeSlice;
+			if(timeSlice2 > timeSlice1)
+			{
+				System.out.println(CareerGroup + " " + Career  + " "
+						+ NextRank + " "  +  timeSlice);
+				timeSlice1 = timeSlice2;
+			}
+		}
+		if(!(TestRank == NextRank))
+		{
+		System.out.println(CareerGroup + " " + Career + " "
+			+ NextRank + " "  +  timeSlice);
+		timeSlice1 = timeSlice;
+		}
+
+		return timeSlice1;
+		
+	}
+	
+	
+
+	 
+	
+	  public static double TimeSlice(boolean True, LaufbahngruppeOhneSchueler
+	  CareerGroup, Laufbahn Career, Dienstgrad HiringRank, Dienstgrad Rank1,
+	  Dienstgrad Rank2, Set<Dienstgrad> TestRanks) { 
+		  double timeRequirement = Befoerderungsvoraussetzungen.getZeitlicheVoraussetzung(
+	                    CareerGroup, Career, HiringRank, Rank1, Rank2);
+		  if(timeRequirement == 0) {
+	         timeRequirement = timeRequirement + 0.25;
+	         } 
+	      double timeSlice = WerkzeugeZeit.zeitperiodeToZeitscheibe(timeRequirement); 
+	      if(Rank1 == Dienstgrad.SCHUETZE) {
+	    	 timeSlice++;
+	        }
+	       else
+	       { 
+	    	   double MaxTimeSlice =  MaximumTimeSlice(CareerGroup, Career, HiringRank, Rank1, TestRanks);
+	    	   timeSlice = timeSlice + MaxTimeSlice;
+	    	   }
+	  
+	     return timeSlice;
+	     }
+	 
+	
+	
+	
+
+	
+	public static double MaximumTimeSlice(LaufbahngruppeOhneSchueler CareerGroup, Laufbahn Career, 
+	Dienstgrad HiringRank, Dienstgrad Rank2, Set<Dienstgrad> SetOfRanks) {
+	Set<Dienstgrad> TempSetOfRanks =  new LinkedHashSet<>();
+	TempSetOfRanks.addAll(SetOfRanks);
+	//TempSetOfRanks.remove(NotIncluded);
+	double MaxTimeSlice = 0.0;
+	boolean bool = true;
+	while(bool){
+
+	List<Double> list = new ArrayList<Double>();	
+	       for(Dienstgrad Rank11 : TempSetOfRanks){
+				boolean IfTimeSliceExists2 = Befoerderungsvoraussetzungen
+						.isZeitlicheVoraussetzungVorhanden(CareerGroup, Career, HiringRank,
+								Rank11, Rank2);
+				if(IfTimeSliceExists2){
+	    	   
+			double TimeSlices = TimeSlice(CareerGroup, Career, HiringRank, Rank11, Rank2);
+			if(Rank11 == HiringRank)
+			{
+				TimeSlices++;
+			}
+			list.add(TimeSlices);
+				}
+		
+		}
+	       if(list.isEmpty())
+	       {
+	    	   MaxTimeSlice = 0.0;
+	    	   bool = false;
+	       }
+	       else {
+		MaxTimeSlice = Collections.max(list);
+		bool = false;
+	       }
+	}
+		return MaxTimeSlice;
+	
+	}
+		
+	
+	
+public static double TimeSlice(LaufbahngruppeOhneSchueler CareerGroup, Laufbahn Career, 
+		Dienstgrad HiringRank, Dienstgrad Rank1, Dienstgrad Rank2) {
+	double timeRequirement1 = Befoerderungsvoraussetzungen.getZeitlicheVoraussetzung(
+			CareerGroup, Career, HiringRank,
+			Rank1, Rank2);
+	double timeSlice = WerkzeugeZeit.zeitperiodeToZeitscheibe(timeRequirement1);	
+		return timeSlice;
+	
+}
+
+public static Set<Dienstgrad> UpdatingList(Set<Dienstgrad> SetOfPreviousRanks2, Dienstgrad RankToBeRemoved)
+{
+	Set<Dienstgrad> SetOfRanks = new LinkedHashSet<>();
+	SetOfRanks.addAll(SetOfPreviousRanks2);
+	SetOfRanks.remove(RankToBeRemoved);
+	SetOfPreviousRanks2 = SetOfRanks;
+	
+	return SetOfPreviousRanks2;
+	
+}
+
+
+		
+		
+	
+	
+	
+	
+
+	
+	
+	
+
+
+
+	// @BeforeAll
+	static void initAll() throws IOException, InterruptedException {
+		Tests.konvertiereCsvToXlsx(Path_Inputdaten_Test, Path_Testszenario, Path_TestszenarioXLfile);
+		Tests.konvertiereCsvToXlsx(Path_Inputdaten_Test, Path_Befoerderungsvoraussetzungen,
+				Path_BefoerderungsvoraussetzungenXLfile);
+
+		Util.set_tmp_dir();
+		Inputdaten.importiereDaten(Path_Inputdaten_mini);
+	}
+	// @Test
+
+	public static void main(String[] args) throws IOException, InterruptedException {
+		initAll();
+		//GettingTimeSlices();
+		GettingTimeRequirement();
+		System.out.println("done");
+		excel(null,null, null, null, null, 0);
+	}
+
+	public Set<Key2Dienstgrad> data = new LinkedHashSet<>();
+
+}
+
+// Use group.getLaufbahngruppe().toOhneSchueler, group.getLaufbahn(),
+// group.getDienstgrad(), group.getRegenerationsZeitscheibe()
+// Use Uebergaenge.getDienstgradZu (transition between ranks)
+// Use Befoerderungsvoraussetzungen.isZeitlicheVoraussetzungVorhanden (whether a
+// requirement exists)
+// Use Befoerderungsvoraussetzungen.getZeitlicheVoraussetzung (time
+// requirement), einstiegsdienstgrad is group.getDienstgrad()
+//NumberOfTimeSlices = ((Regenerationsgruppe) group).getRegenerationsZeitscheibe();

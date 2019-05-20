@@ -1,0 +1,118 @@
+import java.io.File;
+import java.io.IOException;
+import java.util.LinkedHashSet;
+import java.util.Set;
+import java.util.logging.Logger;
+
+import entities.Dienstgrad;
+import entities.Laufbahn;
+import entities.LaufbahngruppeOhneSchueler;
+import group.Gruppe;
+import group.Regenerationsgruppe;
+import input.Befoerderungsvoraussetzungen;
+import input.Inputdaten;
+import input.Uebergaenge;
+import input.keys.Key2Dienstgrad;
+import util.Tests;
+import util.Util;
+
+public class ValidCareers
+
+{
+	private static ValidCareers validCareer;
+	private static final Logger LOG = Logger.getLogger(Logger.GLOBAL_LOGGER_NAME);
+
+	private static final File Path_Inputdaten_Test = new File("Inputdaten_Test");
+	private static final File Path_Inputdaten_mini = new File(Path_Inputdaten_Test, "Inputdaten_mini");
+	private static final File Path_Testszenario = new File(Path_Inputdaten_mini, "Testszenario");
+	private static final File Path_TestszenarioXLfile = new File(Path_Inputdaten_mini, "Testszenario.xlsx");
+	private static final File Path_Befoerderungsvoraussetzungen = new File(Path_Inputdaten_mini,
+			"Befoerderungsvoraussetzungen");
+	private static final File Path_BefoerderungsvoraussetzungenXLfile = new File(Path_Inputdaten_mini,
+			"Befoerderungsvoraussetzungen.xlsx");
+	private static final File File_RequiredList = new File(Path_Inputdaten_mini, "File_RequiredList.xlsx");
+
+	private static void GettingTimeRequirement() {
+
+		LaufbahngruppeOhneSchueler CareerGroup;
+		Laufbahn Career;
+		Dienstgrad FirstRank;
+		Set<Dienstgrad> TestRank;
+		Dienstgrad HiringRank;
+		int NumberOfTimeSlices = 0;
+		Set<Dienstgrad> NextRankSet = null;
+
+		// Set<Dienstgrad> ListOfFirstRanks = new LinkedHashSet<>();
+		double timeRequirement = 0.0; //
+		boolean bool = true;
+		for (Gruppe group : Inputdaten.getGruppen().values()) { //
+			System.out.println(group);
+
+			if (group instanceof Regenerationsgruppe) {
+				Career = group.getLaufbahn();
+				CareerGroup = group.getLaufbahngruppe().toOhneSchueler();
+				FirstRank = group.getEinstiegsdienstgrad();
+				Set<Dienstgrad> result = new LinkedHashSet<>();
+				result.add(FirstRank);
+				HiringRank = group.getEinstiegsdienstgrad();
+				if (HiringRank == Dienstgrad.SCHUETZE) {
+					NumberOfTimeSlices = ((Regenerationsgruppe) group).getRegenerationsZeitscheibe();
+					while (bool) {
+						NextRankSet = Uebergaenge.getDienstgrade(CareerGroup, Career, FirstRank);
+						if (NextRankSet.isEmpty()) {
+							bool = false;
+						}
+						for (Dienstgrad NextRank : NextRankSet) {
+							result.add(NextRank);
+							for (Dienstgrad PreviousFirstRanks : result) {
+								boolean IfTimeSliceExists = Befoerderungsvoraussetzungen
+										.isZeitlicheVoraussetzungVorhanden(CareerGroup, Career, HiringRank,
+												PreviousFirstRanks, NextRank);
+								if (IfTimeSliceExists) {
+									timeRequirement = Befoerderungsvoraussetzungen.getZeitlicheVoraussetzung(
+											CareerGroup, Career, HiringRank, PreviousFirstRanks, NextRank);
+
+									System.out.println(CareerGroup + " " + Career + " " + PreviousFirstRanks + " "
+											+ NextRank + " " + timeRequirement);
+
+									FirstRank = NextRank;
+
+								}
+							}
+
+						}
+					}
+				}
+				bool = true;
+			}
+		}
+	}
+
+	// @BeforeAll
+	static void initAll() throws IOException, InterruptedException {
+		Tests.konvertiereCsvToXlsx(Path_Inputdaten_Test, Path_Testszenario, Path_TestszenarioXLfile);
+		Tests.konvertiereCsvToXlsx(Path_Inputdaten_Test, Path_Befoerderungsvoraussetzungen,
+				Path_BefoerderungsvoraussetzungenXLfile);
+
+		Util.set_tmp_dir();
+		Inputdaten.importiereDaten(Path_Inputdaten_mini);
+	}
+	// @Test
+
+	public static void main(String[] args) throws IOException, InterruptedException {
+		initAll();
+		GettingTimeRequirement();
+		System.out.println("done");
+	}
+
+	public Set<Key2Dienstgrad> data = new LinkedHashSet<>();
+
+}
+
+// Use group.getLaufbahngruppe().toOhneSchueler, group.getLaufbahn(),
+// group.getDienstgrad(), group.getRegenerationsZeitscheibe()
+// Use Uebergaenge.getDienstgradZu (transition between ranks)
+// Use Befoerderungsvoraussetzungen.isZeitlicheVoraussetzungVorhanden (whether a
+// requirement exists)
+// Use Befoerderungsvoraussetzungen.getZeitlicheVoraussetzung (time
+// requirement), einstiegsdienstgrad is group.getDienstgrad()
